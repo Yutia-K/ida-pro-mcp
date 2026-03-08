@@ -1508,6 +1508,14 @@ def main():
         default=None,
         help="Installation scope: 'project' (current directory, default) or 'global' (user-level)",
     )
+    
+    parser.add_argument("--global", dest="global_scope", action="store_true", help="Alias for --scope global")
+    parser.add_argument("--project", action="store_true", help="Alias for --scope project")
+    parser.add_argument("--http", action="store_true", help="Alias for --transport streamable-http")
+    parser.add_argument("--stdio", action="store_true", help="Alias for --transport stdio")
+    parser.add_argument("--sse", action="store_true", help="Alias for --transport sse")
+    parser.add_argument("--target", type=str, default=None, help="Comma-separated targets to pre-fill the interactive install (e.g., 'ida,claude')")
+
     parser.add_argument(
         "--ida-rpc",
         type=str,
