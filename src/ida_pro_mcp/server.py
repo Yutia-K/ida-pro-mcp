@@ -217,14 +217,26 @@ def infer_http_transport_type(transport_url: str) -> str:
 
 def generate_mcp_config(*, client_name: str, transport: str = "stdio"):
     if transport == "stdio":
-        mcp_config = {
-            "command": get_python_executable(),
-            "args": [
-                __file__,
-                "--ida-rpc",
-                f"http://{IDA_HOST}:{IDA_PORT}",
-            ],
-        }
+        if client_name == "Kilo Code":
+            mcp_config = {
+                "type": "local",
+                "command": [
+                    get_python_executable(),
+                    __file__,
+                    "--ida-rpc",
+                    f"http://{IDA_HOST}:{IDA_PORT}",
+                ],
+                "enabled": True,
+            }
+        else:
+            mcp_config = {
+                "command": get_python_executable(),
+                "args": [
+                    __file__,
+                    "--ida-rpc",
+                    f"http://{IDA_HOST}:{IDA_PORT}",
+                ],
+            }
         env = {}
         if copy_python_env(env):
             print("[WARNING] Custom Python environment variables detected")
@@ -326,6 +338,7 @@ GLOBAL_SPECIAL_JSON_STRUCTURES: dict[str, tuple[str | None, str]] = {
     "VS Code": ("mcp", "servers"),
     "VS Code Insiders": ("mcp", "servers"),
     "Visual Studio 2022": (None, "servers"),  # servers at top level
+    "Kilo Code": (None, "mcp"),               # mcp at top level, no nested dict needed
 }
 
 
@@ -357,14 +370,11 @@ def get_global_configs() -> dict[str, tuple[str, str]]:
             ),
             "Kilo Code": (
                 os.path.join(
-                    os.getenv("APPDATA", ""),
-                    "Code",
-                    "User",
-                    "globalStorage",
-                    "kilocode.kilo-code",
-                    "settings",
+                    os.path.expanduser("~"),
+                    ".config",
+                    "kilo",
                 ),
-                "mcp_settings.json",
+                "kilo.json",
             ),
             "Claude": (
                 os.path.join(os.getenv("APPDATA", ""), "Claude"),
@@ -489,15 +499,10 @@ def get_global_configs() -> dict[str, tuple[str, str]]:
             "Kilo Code": (
                 os.path.join(
                     os.path.expanduser("~"),
-                    "Library",
-                    "Application Support",
-                    "Code",
-                    "User",
-                    "globalStorage",
-                    "kilocode.kilo-code",
-                    "settings",
+                    ".config",
+                    "kilo",
                 ),
-                "mcp_settings.json",
+                "kilo.json",
             ),
             "Claude": (
                 os.path.join(
@@ -651,13 +656,9 @@ def get_global_configs() -> dict[str, tuple[str, str]]:
                 os.path.join(
                     os.path.expanduser("~"),
                     ".config",
-                    "Code",
-                    "User",
-                    "globalStorage",
-                    "kilocode.kilo-code",
-                    "settings",
+                    "kilo",
                 ),
-                "mcp_settings.json",
+                "kilo.json",
             ),
             # Claude not supported on Linux
             "Cursor": (os.path.join(os.path.expanduser("~"), ".cursor"), "mcp.json"),
@@ -1091,7 +1092,7 @@ def install_mcp_servers(
         is_toml = config_file.endswith(".toml")
 
         if not os.path.exists(config_dir):
-            if project and not uninstall:
+            if (project or name == "Kilo Code") and not uninstall:
                 os.makedirs(config_dir, exist_ok=True)
             else:
                 action = "uninstall" if uninstall else "installation"
@@ -1183,6 +1184,10 @@ def install_mcp_servers(
                 client_name=name,
                 transport=transport,
             )
+
+        # Inject Kilo Schema
+        if name == "Kilo Code" and not is_toml:
+            config["$schema"] = "https://opencode.ai/config.json"
 
         # Atomic write: temp file + rename
         suffix = ".toml" if is_toml else ".json"
@@ -1340,8 +1345,8 @@ def _interactive_install(*, uninstall: bool, args):
     """Full interactive install/uninstall flow with transport and scope selection."""
     action = "uninstall" if uninstall else "install"
 
-    # Step 1: Transport selection (skip for uninstall, or if --transport was explicitly set)
-    if not uninstall and args.transport is None:
+    # Step 1: Transport selection (skip for uninstall, or if --transport or transport aliases were explicitly set)
+    if not uninstall and args.transport is None and not any((args.http, args.stdio, args.sse)):
         choice = interactive_choose(
             ["Streamable HTTP (recommended)", "stdio", "SSE"],
             "Select transport mode:",
@@ -1356,13 +1361,24 @@ def _interactive_install(*, uninstall: bool, args):
         else:
             transport = "sse"
     elif not uninstall:
-        transport = _resolve_transport(args.transport or "streamable-http")
+        if args.http:
+            transport = "streamable-http"
+        elif args.stdio:
+            transport = "stdio"
+        elif args.sse:
+            transport = "sse"
+        else:
+            transport = _resolve_transport(args.transport or "streamable-http")
     else:
         transport = "stdio"  # doesn't matter for uninstall
 
-    # Step 2: Scope selection (skip if --scope was explicitly set)
+    # Step 2: Scope selection (skip if --scope or scope aliases were explicitly set)
     if args.scope:
         scope_value = args.scope
+    elif args.global_scope:
+        scope_value = "global"
+    elif args.project:
+        scope_value = "project"
     else:
         scope = interactive_choose(
             ["Project (current directory)", "Global (user-level)"],
@@ -1379,20 +1395,35 @@ def _interactive_install(*, uninstall: bool, args):
     do_global = scope_value == "global"
     do_project = scope_value == "project"
 
-    # Step 3: Target selection per scope
+    # Step 3: Target selection per scope (skip if --target or args.install string was provided)
+    # The --install target string is stored in args.install if it was used like --install claude,ida
+    # The --target array is stored in args.target if it was used like --install --target=claude,ida
+    targets_str = (args.install if args.install is not None else args.uninstall) or args.target
+    if targets_str:
+        selected_raw = [t.strip() for t in targets_str.split(",") if t.strip()]
+        selected = []
+        for target in selected_raw:
+             if target.lower() in ("ida-plugin", "ida"):
+                 selected.append("IDA Plugin")
+             else:
+                 selected.append(target)
+    else:
+        selected = None
+
     if do_global:
         global_configs = get_global_configs()
         if global_configs:
-            items: list[tuple[str, bool]] = []
-            items.append(("IDA Plugin", is_ida_plugin_installed()))
-            for name, (config_dir, config_file) in global_configs.items():
-                installed = is_client_installed(name, config_dir, config_file)
-                items.append((name, installed))
-
-            selected = interactive_select(items, f"Select global targets to {action}:")
             if selected is None:
-                print("Cancelled.")
-                return
+                items: list[tuple[str, bool]] = []
+                items.append(("IDA Plugin", is_ida_plugin_installed()))
+                for name, (config_dir, config_file) in global_configs.items():
+                    installed = is_client_installed(name, config_dir, config_file)
+                    items.append((name, installed))
+    
+                selected = interactive_select(items, f"Select global targets to {action}:")
+                if selected is None:
+                    print("Cancelled.")
+                    return
 
             if "IDA Plugin" in selected:
                 install_ida_plugin(
@@ -1411,17 +1442,18 @@ def _interactive_install(*, uninstall: bool, args):
     if do_project:
         project_configs = get_project_configs(os.getcwd())
         if project_configs:
-            items = []
-            for name, (config_dir, config_file) in project_configs.items():
-                installed = is_client_installed(
-                    name, config_dir, config_file, project=True
-                )
-                items.append((name, installed))
-
-            selected = interactive_select(items, f"Select project targets to {action}:")
             if selected is None:
-                print("Cancelled.")
-                return
+                items = []
+                for name, (config_dir, config_file) in project_configs.items():
+                    installed = is_client_installed(
+                        name, config_dir, config_file, project=True
+                    )
+                    items.append((name, installed))
+    
+                selected = interactive_select(items, f"Select project targets to {action}:")
+                if selected is None:
+                    print("Cancelled.")
+                    return
 
             if selected:
                 install_mcp_servers(
@@ -1430,6 +1462,8 @@ def _interactive_install(*, uninstall: bool, args):
                     only=selected,
                     project=True,
                 )
+
+
 
 
 def main():
@@ -1514,48 +1548,9 @@ def main():
         print("Cannot install and uninstall at the same time")
         return
 
-    if is_install or is_uninstall:
-        targets_str = args.install if is_install else args.uninstall
-        uninstall = is_uninstall
-
-        if targets_str:
-            # Explicit targets: --install claude,cursor,ida-plugin
-            # Use CLI flags for transport/scope (no interactive prompts)
-            transport = _resolve_transport(args.transport or "streamable-http")
-            scope = args.scope or "project"
-
-            targets = [t.strip() for t in targets_str.split(",") if t.strip()]
-            install_ida = False
-            client_targets = []
-            for target in targets:
-                if target.lower() == "ida-plugin":
-                    install_ida = True
-                else:
-                    client_targets.append(target)
-
-            if install_ida:
-                install_ida_plugin(
-                    uninstall=uninstall, allow_ida_free=args.allow_ida_free
-                )
-            if client_targets:
-                do_global = scope == "global"
-                do_project = scope == "project"
-                if do_global:
-                    install_mcp_servers(
-                        transport=transport,
-                        uninstall=uninstall,
-                        only=client_targets,
-                    )
-                if do_project:
-                    install_mcp_servers(
-                        transport=transport,
-                        uninstall=uninstall,
-                        only=client_targets,
-                        project=True,
-                    )
-        else:
-            # No targets: full interactive flow
-            _interactive_install(uninstall=uninstall, args=args)
+    if args.install is not None or args.uninstall is not None:
+        uninstall = args.uninstall is not None
+        _interactive_install(uninstall=uninstall, args=args)
         return
 
     if args.config:
