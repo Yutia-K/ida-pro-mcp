@@ -216,27 +216,32 @@ def infer_http_transport_type(transport_url: str) -> str:
 
 
 def generate_mcp_config(*, client_name: str, transport: str = "stdio"):
+    if client_name == "Kilo Code":
+        mcp_config = {
+            "type": "local",
+            "command": [
+                get_python_executable(),
+                __file__,
+                "--ida-rpc",
+                f"http://{IDA_HOST}:{IDA_PORT}",
+            ],
+            "enabled": True,
+        }
+        env = {}
+        if copy_python_env(env):
+            print("[WARNING] Custom Python environment variables detected")
+            mcp_config["env"] = env
+        return mcp_config
+
     if transport == "stdio":
-        if client_name == "Kilo Code":
-            mcp_config = {
-                "type": "local",
-                "command": [
-                    get_python_executable(),
-                    __file__,
-                    "--ida-rpc",
-                    f"http://{IDA_HOST}:{IDA_PORT}",
-                ],
-                "enabled": True,
-            }
-        else:
-            mcp_config = {
-                "command": get_python_executable(),
-                "args": [
-                    __file__,
-                    "--ida-rpc",
-                    f"http://{IDA_HOST}:{IDA_PORT}",
-                ],
-            }
+        mcp_config = {
+            "command": get_python_executable(),
+            "args": [
+                __file__,
+                "--ida-rpc",
+                f"http://{IDA_HOST}:{IDA_PORT}",
+            ],
+        }
         env = {}
         if copy_python_env(env):
             print("[WARNING] Custom Python environment variables detected")
