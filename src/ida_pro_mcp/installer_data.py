@@ -54,6 +54,7 @@ GLOBAL_SPECIAL_JSON_STRUCTURES: dict[str, tuple[str | None, str]] = {
     "VS Code Insiders": ("mcp", "servers"),
     "Visual Studio 2022": (None, "servers"),
     "Opencode": (None, "mcp"),
+    "Kilo": (None, "mcp"),
 }
 
 
@@ -385,6 +386,10 @@ def get_global_configs() -> dict[str, tuple[str, str]]:
                     "settings",
                 ),
                 "mcp_settings.json",
+            ),
+            "Kilo": (
+                os.path.join(os.path.expanduser("~"), ".config", "kilo"),
+                "config.json",
             ),
             "Cursor": (os.path.join(os.path.expanduser("~"), ".cursor"), "mcp.json"),
             "Windsurf": (

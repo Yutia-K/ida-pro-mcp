@@ -124,7 +124,7 @@ def infer_http_transport_type(transport_url: str) -> str:
 
 def generate_mcp_config(*, client_name: str, transport: str = "stdio"):
     if transport == "stdio":
-        if client_name == "Opencode":
+        if client_name in ("Opencode", "Kilo"):
             mcp_config = {
                 "type": "local",
                 "command": [
@@ -404,6 +404,7 @@ def install_mcp_servers(
                 transport=transport,
             )
 
+        os.makedirs(config_dir, exist_ok=True)
         _write_config_file(config_path, config, is_toml=is_toml)
         if not quiet:
             action = "Uninstalled" if uninstall else "Installed"
