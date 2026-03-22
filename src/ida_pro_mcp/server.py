@@ -153,6 +153,11 @@ def main():
         action="store_true",
         help="List all available MCP client targets",
     )
+    parser.add_argument(
+        "--create-directories",
+        action="store_true",
+        help="Create missing config directories during installation",
+    )
     args = parser.parse_args()
 
     # Handle --list-clients independently

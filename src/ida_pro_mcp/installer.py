@@ -124,7 +124,7 @@ def infer_http_transport_type(transport_url: str) -> str:
 
 def generate_mcp_config(*, client_name: str, transport: str = "stdio"):
     if transport == "stdio":
-        if client_name in ("Opencode", "Kilo"):
+        if client_name == "Opencode":
             mcp_config = {
                 "type": "local",
                 "command": [
@@ -133,6 +133,17 @@ def generate_mcp_config(*, client_name: str, transport: str = "stdio"):
                     "--ida-rpc",
                     f"http://{IDA_HOST}:{IDA_PORT}",
                 ],
+            }
+        elif client_name == "Kilo":
+            mcp_config = {
+                "type": "local",
+                "command": [
+                    get_python_executable(),
+                    SERVER_SCRIPT,
+                    "--ida-rpc",
+                    f"http://{IDA_HOST}:{IDA_PORT}",
+                ],
+                "enabled": True,
             }
         else:
             mcp_config = {
@@ -157,6 +168,8 @@ def generate_mcp_config(*, client_name: str, transport: str = "stdio"):
     transport_url = normalize_transport_url(transport)
     if client_name == "Opencode":
         return {"type": "remote", "url": transport_url}
+    if client_name == "Kilo":
+        return {"type": "http", "url": force_mcp_path(transport_url), "enabled": True}
     if client_name == "Codex":
         return {"url": force_mcp_path(transport_url)}
     if client_name in ("Claude", "Claude Code"):
@@ -340,6 +353,7 @@ def install_mcp_servers(
     quiet: bool = False,
     only: list[str] | None = None,
     project: bool = False,
+    create_directories: bool = False,
 ):
     configs, special_json_structures = _get_scope_config_spec(project=project)
     if not configs:
@@ -356,7 +370,7 @@ def install_mcp_servers(
         is_toml = config_file.endswith(".toml")
 
         if not os.path.exists(config_dir):
-            if project and not uninstall:
+            if (project or create_directories) and not uninstall:
                 os.makedirs(config_dir, exist_ok=True)
             else:
                 action = "uninstall" if uninstall else "installation"
@@ -583,6 +597,7 @@ def _apply_client_install(
     transport: str,
     uninstall: bool,
     client_targets: list[str],
+    create_directories: bool = False,
 ) -> None:
     if client_targets:
         install_mcp_servers(
@@ -590,6 +605,7 @@ def _apply_client_install(
             uninstall=uninstall,
             only=client_targets,
             project=(scope == "project"),
+            create_directories=create_directories,
         )
 
 
@@ -628,6 +644,7 @@ def _interactive_install(*, uninstall: bool, args):
         transport=transport,
         uninstall=uninstall,
         client_targets=selected,
+        create_directories=args.create_directories,
     )
 
 
@@ -642,6 +659,7 @@ def run_install_command(*, uninstall: bool, targets_str: str, args) -> None:
             ),
             uninstall=uninstall,
             client_targets=_parse_client_targets(targets_str),
+            create_directories=args.create_directories,
         )
         return
 

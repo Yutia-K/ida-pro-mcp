@@ -16,6 +16,7 @@ CLIENT_ALIASES: dict[str, str] = {
     "roocode": "Roo Code",
     "kilo": "Kilo Code",
     "kilocode": "Kilo Code",
+    "kilo-cli": "Kilo",
     "gemini": "Gemini CLI",
     "qwen": "Qwen Coder",
     "copilot": "Copilot CLI",
@@ -93,6 +94,10 @@ def get_global_configs() -> dict[str, tuple[str, str]]:
                     "settings",
                 ),
                 "mcp_settings.json",
+            ),
+            "Kilo": (
+                os.path.join(os.path.expanduser("~"), ".config", "kilo"),
+                "config.json",
             ),
             "Claude": (
                 os.path.join(os.getenv("APPDATA", ""), "Claude"),
@@ -226,6 +231,10 @@ def get_global_configs() -> dict[str, tuple[str, str]]:
                     "settings",
                 ),
                 "mcp_settings.json",
+            ),
+            "Kilo": (
+                os.path.join(os.path.expanduser("~"), ".config", "kilo"),
+                "config.json",
             ),
             "Claude": (
                 os.path.join(
